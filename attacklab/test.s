@@ -1,0 +1,4 @@
+mov $0x59b997fa,%rdi
+add $0x8,%rsp
+pushq $0x4017ec
+ret
