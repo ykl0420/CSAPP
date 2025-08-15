@@ -1,55 +1,86 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <getopt.h>
 #include "cachelab.h"
 #define ull unsigned long long
-unsigned Tm, S, s, E, b, hit_cnt, miss_cnt, evict_cnt;
-unsigned **tm;
-ull **st;
-void access(ull x){
+static unsigned Tm, S, s, E, b, hit_cnt, miss_cnt, evict_cnt;
+typedef struct{
+	ull state; // state = (valid_bit << 63) | tag 
+	unsigned time;
+}node;
+void access(node **cache,ull x){
 	unsigned ind = x >> b & (S - 1), mn = 1e9, pos = -1;
 	x >>= s + b;
 	for(int i = 0; i < E; i ++){
-		if(!(st[ind][i] ^ x)){
-			tm[ind][i] = Tm, hit_cnt ++;
+		if(!(cache[ind][i].state ^ x)){
+			cache[ind][i].time = Tm, hit_cnt ++;
 			return;
 		}
-		if(tm[ind][i] <= mn) pos = i, mn = tm[ind][i];
+		if(cache[ind][i].time <= mn) pos = i, mn = cache[ind][i].time;
 	}
 	miss_cnt ++;
-	if(!(st[ind][pos] >> 31)) evict_cnt ++;
-	st[ind][pos] = x, tm[ind][pos] = Tm;
+	if(!(cache[ind][pos].state >> 63)) evict_cnt ++;
+	cache[ind][pos].state = x, cache[ind][pos].time = Tm;
 }
-int main(int argc,char *argv[]){
-	// printf("%d\n",argc);
-	// printf("%s %s %s %s\n",argv[2],argv[4],argv[6],argv[8]);
-	sscanf(argv[2],"%u",&s);
-	sscanf(argv[4],"%u",&E);
-	sscanf(argv[6],"%u",&b);
-	freopen(argv[8],"r",stdin);
+node** init(){
 	S = 1u << s;
-	st = malloc(S * sizeof(ull*));
-	tm = malloc(S * sizeof(unsigned*));
+	node** cache = malloc(S * sizeof(node*));
 	for(int i = 0; i < S; i ++){
-		st[i] = malloc(E * sizeof(ull));
-		for(int j = 0; j < E; j ++) st[i][j] = 1u << 31;
+		cache[i] = malloc(E * sizeof(node));
+		for(int j = 0; j < E; j ++) cache[i][j].state = 1ull << 63,cache[i][j].time = 0;
 	}
-	for(int i = 0; i < S; i ++){
-		tm[i] = malloc(E * sizeof(unsigned));
-		for(int j = 0; j < E; j ++) tm[i][j] = 0;
+	return cache;
+}
+void destroy(FILE* data_file, node **cache){
+    for(int i = 0; i < S; i ++) free(cache[i]);
+    free(cache);
+    fclose(data_file);
+}
+FILE* parse(int argc,char *argv[]){
+	FILE* data_file = NULL;
+	int opt;
+	while((opt = getopt(argc,argv,"hvs:E:b:t:")) != -1){
+		switch(opt){
+			case 'h':
+			case 'v':
+				break; // both not implement
+			case 's':
+				s = atoi(optarg);
+				break;
+			case 'E':
+				E = atoi(optarg);
+				break;
+			case 'b':
+				b = atoi(optarg);
+				break;
+			case 't':
+				data_file = fopen(optarg,"r");
+				break;
+			case '?':
+				// don't know how to handle
+				break;
+		}
 	}
-	char op;
-	ull x;
-	int foo;
-	while(scanf(" %c %llx,%d", &op, &x, &foo) != -1){
-		printf("%c %llx\n", op, x);
+	if(data_file == NULL){
+		// ?
+	}
+	return data_file;
+}
+void process(FILE* data_file, node **cache){
+	char op; ull x;
+	while(fscanf(data_file, " %c %llx,%*d", &op, &x) != -1){
+		// printf("%c %llx\n", op, x);
 		++Tm;
 		if(op == 'I') continue;
-		if(op != 'S') access(x);
-		if(op != 'L') access(x);
+		if(op != 'S') access(cache,x); // "Load"
+		if(op != 'L') access(cache,x); // "Store"
 	}
+}
+int main(int argc,char *argv[]){
+	FILE* data_file = parse(argc,argv);
+	node **cache = init();
+	process(data_file, cache);
     printSummary(hit_cnt, miss_cnt, evict_cnt);
-    for(int i = 0; i < S; i ++) free(st[i]);
-    for(int i = 0; i < S; i ++) free(tm[i]);
-    free(st),free(tm);
+    destroy(data_file, cache);
     return 0;
 }
