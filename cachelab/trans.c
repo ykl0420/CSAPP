@@ -20,8 +20,23 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
  *     be graded. 
  */
 char transpose_submit_desc[] = "Transpose submission";
-void transpose_submit(int M, int N, int A[N][M], int B[M][N])
-{
+void transpose_submit(int M, int N, int A[N][M], int B[M][N]){
+	if(N == 32){
+		for(int i = 0; i < N; i += 8){
+			for(int j = 0; j < M; j += 8){
+				for(int p = 0; p < 8; p ++){
+					int tmp;
+					for(int q = 0; q < 8; q ++){
+						if(i + p != q + j) B[q + j][p + i] = A[p + i][q + j];
+						else tmp = A[p + i][q + j];
+					}
+					if(i == j) B[p + j][p + i] = tmp;
+				}
+			}
+		}
+	}else if(N == 64){
+		
+	}
 }
 
 /* 
