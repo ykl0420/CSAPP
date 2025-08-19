@@ -1,0 +1,5 @@
+#!/bin/zsh
+   for i in {01..16}; do
+   	 echo processing $i
+     make test$i | tail -n +2 | ./work > ans$i.txt
+   done

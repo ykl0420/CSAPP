@@ -1,0 +1,5 @@
+#!/bin/zsh
+for i in {01..16}; do
+	echo now diff $i
+	diff ans$i.txt std$i.txt
+done
