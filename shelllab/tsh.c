@@ -281,8 +281,8 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv)
 {
-	if(!strcmp(argv[0],"quit")) exit(0);
-	if(!strcmp(argv[0],"jobs")){
+	if(!strncmp(argv[0],"quit",4)) exit(0);
+	if(!strncmp(argv[0],"jobs",4)){
 		Block();
 		listjobs(jobs);
 		Unblock();
@@ -295,7 +295,7 @@ int builtin_cmd(char **argv)
     return 0;     /* not a builtin command */
 }
 
-int parse_id(char *s,char *cmd){
+int parse_id(char *s,char *cmd){ // only call in blocked context
 	pid_t pid;
 	if(s[0] == '%'){
 		int jid = atoi(s + 1);
