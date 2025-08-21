@@ -37,25 +37,34 @@
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(p) (((size_t)(p) + (ALIGNMENT-1)) & ~0x7)
 
+#define BLOCK_NUM 10
 
-#define lBOUND(k) ((1 << ((k) + 3)) + sizeof(block))
+#define HEADER_BYTES 20
+
+#define MIN_BLOCK 3
+
+
+#define BYTE(size) ((size) << 3)
+#define SIZE_IN_BYTE(b) ((b)->size << 3)
+
+
+#define lBOUND(k) ((1u << ((k) + 1)))
 #define uBOUND(k) ((k) == 9 ? UINT_MAX : lBOUND((k) + 1) - 1)
 
-#define MIN_BLOCK lBOUND(0)
 
-#define NEXT(p) ((block*)((void*)(p) + (p)->size))
+#define NEXT(p) ((block*)((void*)(p) + SIZE_IN_BYTE(p)))
 #define PREV(p) ((block*)((void*)(p) - *((int*)(p) - 1)))
 
-#define BEGIN(p) ((void*)(p) + sizeof(block))
+#define BEGIN(p) ((void*)(p) + HEADER_BYTES)
 #define END(p) ((void*)((int*)(NEXT(p)) - 1))
-#define HEAD(p) ((block*)(p) - 1)
+#define HEAD(p) ((block*)((void*)(p) - HEADER_BYTES))
 
 typedef struct __block{
-	unsigned size;
-	char state;
-	char prev_state;
 	struct __block *prev;
 	struct __block *next;
+	unsigned size : 29;
+	unsigned state : 1;
+	unsigned prev_state : 1;
 }block;
 
 block **head,*first_block,*last_block;
@@ -68,22 +77,23 @@ static unsigned min(unsigned a,unsigned b){
  * Initialize: return -1 on error, 0 on success.
  */
 int mm_init(void) {
-	head = mem_sbrk(10 * sizeof(block*));
+	head = mem_sbrk(BLOCK_NUM * sizeof(block*));
 	if(head == NULL) return -1;
-	for(int i = 0; i <= 9; i ++){
-		head[i] = mem_sbrk(sizeof(block));
+	for(int i = 0; i < BLOCK_NUM; i ++){
+		head[i] = mem_sbrk(ALIGN(HEADER_BYTES));
 		head[i]->size = 0;
 		head[i]->state = 0;
 		head[i]->prev_state = 0;
 		head[i]->prev = NULL;
 		head[i]->next = NULL;
 	}
-	first_block = head[9] + 1;
+	mem_sbrk(4);
+	first_block = mem_heap_hi() + 1;
     return 0;
 }
 
 static block* alloc_new_block(unsigned size){
-	block *b = mem_sbrk(size);
+	block *b = mem_sbrk(BYTE(size));
 	b->size = size;
 	b->state = 1;
 	if(b != first_block) b->prev_state = last_block->state;
@@ -92,7 +102,7 @@ static block* alloc_new_block(unsigned size){
 }
 
 static void set_footer(block *b){
-	*(int*)END(b) = b->size;
+	*(int*)END(b) = SIZE_IN_BYTE(b);
 }
 
 static void set_alloc(block *b){
@@ -149,10 +159,10 @@ static block* split(block *b,unsigned size){
 /*
  * malloc
  */
-void *malloc (size_t size) {
+void *malloc (size_t bytes) {
 	printf("malloc\n");
-	if(size == 0) return NULL;
-	size = sizeof(block) + ALIGN(size);
+	if(bytes == 0) return NULL;
+	size_t size = ALIGN(HEADER_BYTES + bytes) >> 3;
 	block *b = NULL;
 	for(int i = 0; i <= 9; i ++){
 		if(size > uBOUND(i)) continue;
@@ -167,8 +177,10 @@ void *malloc (size_t size) {
 		}
 		if(b) break;
 	}
+	printf("%u\n",size);
 	if(!b){
 		b = alloc_new_block(size);
+		printf("%p %p %p\n",b,last_block,BEGIN(b));
 		return BEGIN(b);
 	}
 	delete_list(b);
@@ -206,14 +218,13 @@ void free (void *p) {
 /*
  * realloc - you may want to look at mm-naive.c
  */
-void *realloc(void *oldptr, size_t size) {
-	size_t alloc_size = size;
-	size = sizeof(block) + ALIGN(alloc_size);
+void *realloc(void *oldptr, size_t bytes) {
+	int size = ALIGN(HEADER_BYTES + bytes) >> 3;
 
-	printf("realloc %p %lu\n",oldptr,alloc_size);
+	printf("realloc %p %lu\n",oldptr,bytes);
 
-	if(oldptr == NULL) return malloc(alloc_size);
-	if(alloc_size == 0){
+	if(oldptr == NULL) return malloc(bytes);
+	if(bytes == 0){
 		free(oldptr);
 		return NULL;
 	}
@@ -227,6 +238,7 @@ void *realloc(void *oldptr, size_t size) {
 		}
 		return oldptr;
 	}else{
+		printf("HHH\n");
 		if(b != last_block && !NEXT(b)->state && b->size + NEXT(b)->size >= size){
 			delete_list(NEXT(b));
 			merge(b);
@@ -236,12 +248,12 @@ void *realloc(void *oldptr, size_t size) {
 			}
 			return oldptr;
 		}else if(b == last_block){
-			alloc_new_block(size - b->size); // both function only use the first 8B, will not segfault since the SIZE is aligned
-			merge(b);
+			mem_sbrk(BYTE(size - b->size));
+			b->size = size;
 			return oldptr;
 		}else{
-			void *newptr = malloc(alloc_size);
-			memcpy(newptr,oldptr,min(b->size - sizeof(block),alloc_size));
+			void *newptr = malloc(bytes);
+			memcpy(newptr,oldptr,min(SIZE_IN_BYTE(b) - HEADER_BYTES,bytes));
 			free(oldptr);
 			return newptr;
 		}
@@ -253,9 +265,9 @@ void *realloc(void *oldptr, size_t size) {
  * This function is not tested by mdriver, but it is
  * needed to run the traces.
  */
-void *calloc (size_t nmemb, size_t size) {
-	void* p = malloc(nmemb * size);
-	memset(p,0,nmemb * size);
+void *calloc (size_t nmemb, size_t bytes) {
+	void* p = malloc(nmemb * bytes);
+	memset(p,0,nmemb * bytes);
     return p;
 }
 
