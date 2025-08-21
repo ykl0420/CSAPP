@@ -37,11 +37,13 @@
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(p) (((size_t)(p) + (ALIGNMENT-1)) & ~0x7)
 
+#define MAX_FIT_TIMES 5
+
 #define BLOCK_NUM 10
 
-#define HEADER_BYTES 20
+#define HEADER_BYTES 12
 
-#define MIN_BLOCK 3
+#define MIN_BLOCK 2
 
 
 #define BYTE(size) ((size) << 3)
@@ -52,6 +54,10 @@
 #define uBOUND(k) ((k) == 9 ? UINT_MAX : lBOUND((k) + 1) - 1)
 
 
+#define LINK_POS(b) ((void*)b - mem_heap_lo())
+#define LINK_PREV(b) ((block*)(mem_heap_lo() + (b)->prev))
+#define LINK_NEXT(b) ((block*)(mem_heap_lo() + (b)->next))
+
 #define NEXT(p) ((block*)((void*)(p) + SIZE_IN_BYTE(p)))
 #define PREV(p) ((block*)((void*)(p) - *((int*)(p) - 1)))
 
@@ -60,8 +66,8 @@
 #define HEAD(p) ((block*)((void*)(p) - HEADER_BYTES))
 
 typedef struct __block{
-	struct __block *prev;
-	struct __block *next;
+	unsigned prev;
+	unsigned next;
 	unsigned size : 29;
 	unsigned state : 1;
 	unsigned prev_state : 1;
@@ -84,8 +90,8 @@ int mm_init(void) {
 		head[i]->size = 0;
 		head[i]->state = 0;
 		head[i]->prev_state = 0;
-		head[i]->prev = NULL;
-		head[i]->next = NULL;
+		head[i]->prev = 0;
+		head[i]->next = 0;
 	}
 	mem_sbrk(4);
 	first_block = mem_heap_hi() + 1;
@@ -119,15 +125,15 @@ static void insert_list(block *b){
 	for(int i = 0; i <= 9; i ++){
 		if(b->size > uBOUND(i)) continue;
 		b->next = head[i]->next;
-		if(b->next) b->next->prev = b;
-		b->prev = head[i];
-		head[i]->next = b;
+		if(b->next) LINK_NEXT(b)->prev = LINK_POS(b);
+		b->prev = LINK_POS(head[i]);
+		head[i]->next = LINK_POS(b);
 		break;
 	}
 }
 static void delete_list(block *b){
-	b->prev->next = b->next;
-	if(b->next) b->next->prev = b->prev;
+	LINK_PREV(b)->next = b->next;
+	if(b->next) LINK_NEXT(b)->prev = b->prev;
 }
 
 /* Merge the block b and NEXT(b), keep the state of b */
@@ -169,11 +175,11 @@ void *malloc (size_t bytes) {
 		block *p = head[i];
 		int c = 0;
 		while(p->next){
-			p = p->next;
+			p = LINK_NEXT(p);
 			if(p->size < size) continue;
 			if(!b || p->size <= b->size) b = p;
 			c ++;
-			if(b && c >= 10) break;
+			if(b && c >= MAX_FIT_TIMES) break;
 		}
 		if(b) break;
 	}
