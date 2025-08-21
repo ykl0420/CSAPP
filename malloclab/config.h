@@ -30,31 +30,25 @@
 //     "amptjp.rep", \
 //     "bash.rep", \
 //     "boat.rep",\
+//     "boat-plus.rep", \
+//     "binary2-bal.rep",\
 //     "cccp.rep", \
+//     "cccp-bal.rep", \
 //     "chrome.rep", \
 //     "coalesce-big.rep",  \
 //     "coalescing-bal.rep", \
 //     "corners.rep", \
 //     "cp-decl.rep", \
 //     "exhaust.rep", \
-//     "firefox.rep", \
-//     "firefox-reddit.rep", \
-//     "hostname.rep", \
-//     "login.rep", \
-//     "lrucd.rep", \
-//     "ls.rep", \
+//     "expr-bal.rep", \
+//     "firefox-reddit2.rep", \
+//     "freeciv.rep", \
 //     "malloc.rep", \
 //     "malloc-free.rep", \
-//     "needle.rep", \
-//     "nlydf.rep", \
 //     "perl.rep", \
-//     "qyqyc.rep", \
 //     "random.rep", \
 //     "random2.rep", \
-//     "rm.rep", \
-//     "rulsr.rep",\
-//     "seglist.rep", \
-//     "short2.rep"
+//     "realloc.rep"
 #define DEFAULT_TRACEFILES \
     "alaska.rep", \
     "boat.rep", \

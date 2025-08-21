@@ -41,41 +41,51 @@
 
 #define BLOCK_NUM 10
 
-#define HEADER_BYTES 12
+#define CUT_RATIO 0.2
 
-#define MIN_BLOCK 2
+#define ALLOC_HEADER_BYTES 4
+#define UNALLOC_HEADER_BYTES 12
+
+#define MIN_CUT_BLOCK 5
 
 
 #define BYTE(size) ((size) << 3)
 #define SIZE_IN_BYTE(b) ((b)->size << 3)
 
 
-#define lBOUND(k) ((1u << ((k) + 1)))
-#define uBOUND(k) ((k) == 9 ? UINT_MAX : lBOUND((k) + 1) - 1)
+#define lBOUND(k) ((1u << (k)))
+#define uBOUND(k) ((k) == BLOCK_NUM - 1 ? UINT_MAX : lBOUND((k) + 1) - 1)
 
 
-#define LINK_POS(b) ((void*)b - mem_heap_lo())
-#define LINK_PREV(b) ((block*)(mem_heap_lo() + (b)->prev))
-#define LINK_NEXT(b) ((block*)(mem_heap_lo() + (b)->next))
+#define LINK_POS(b) ((void*)b - HEAP_LOW)
+#define LINK_PREV(b) ((block*)(HEAP_LOW + (b)->prev))
+#define LINK_NEXT(b) ((block*)(HEAP_LOW + (b)->next))
 
 #define NEXT(p) ((block*)((void*)(p) + SIZE_IN_BYTE(p)))
 #define PREV(p) ((block*)((void*)(p) - *((int*)(p) - 1)))
 
-#define BEGIN(p) ((void*)(p) + HEADER_BYTES)
+#define BEGIN(p) ((void*)(p) + ALLOC_HEADER_BYTES)
 #define END(p) ((void*)((int*)(NEXT(p)) - 1))
-#define HEAD(p) ((block*)((void*)(p) - HEADER_BYTES))
+#define HEAD(p) ((block*)((void*)(p) - ALLOC_HEADER_BYTES))
 
 typedef struct __block{
-	unsigned prev;
-	unsigned next;
 	unsigned size : 29;
 	unsigned state : 1;
 	unsigned prev_state : 1;
+	unsigned prev;
+	unsigned next;
 }block;
 
 block **head,*first_block,*last_block;
 
-static unsigned min(unsigned a,unsigned b){
+void *HEAP_LOW;
+
+
+inline static unsigned calc_size(size_t bytes){
+	size_t size = ALIGN(ALLOC_HEADER_BYTES + bytes) >> 3;
+	return size + (size == 1);
+}
+inline static unsigned min(unsigned a,unsigned b){
 	return a < b ? a : b;
 }
 
@@ -86,7 +96,7 @@ int mm_init(void) {
 	head = mem_sbrk(BLOCK_NUM * sizeof(block*));
 	if(head == NULL) return -1;
 	for(int i = 0; i < BLOCK_NUM; i ++){
-		head[i] = mem_sbrk(ALIGN(HEADER_BYTES));
+		head[i] = mem_sbrk(ALIGN(UNALLOC_HEADER_BYTES));
 		head[i]->size = 0;
 		head[i]->state = 0;
 		head[i]->prev_state = 0;
@@ -95,6 +105,7 @@ int mm_init(void) {
 	}
 	mem_sbrk(4);
 	first_block = mem_heap_hi() + 1;
+	HEAP_LOW = mem_heap_lo();
     return 0;
 }
 
@@ -107,22 +118,22 @@ static block* alloc_new_block(unsigned size){
 	return b;
 }
 
-static void set_footer(block *b){
+inline static void set_footer(block *b){
 	*(int*)END(b) = SIZE_IN_BYTE(b);
 }
 
-static void set_alloc(block *b){
+inline static void set_alloc(block *b){
 	b->state = 1;
 	if(b != last_block) NEXT(b)->prev_state = 1;
 }
-static void set_unalloc(block* b){
+inline static void set_unalloc(block* b){
 	b->state = 0;
 	set_footer(b);
 	if(b != last_block) NEXT(b)->prev_state = 0;
 }
 
 static void insert_list(block *b){
-	for(int i = 0; i <= 9; i ++){
+	for(int i = 0; i < BLOCK_NUM; i ++){
 		if(b->size > uBOUND(i)) continue;
 		b->next = head[i]->next;
 		if(b->next) LINK_NEXT(b)->prev = LINK_POS(b);
@@ -131,7 +142,7 @@ static void insert_list(block *b){
 		break;
 	}
 }
-static void delete_list(block *b){
+inline static void delete_list(block *b){
 	LINK_PREV(b)->next = b->next;
 	if(b->next) LINK_NEXT(b)->prev = b->prev;
 }
@@ -162,15 +173,22 @@ static block* split(block *b,unsigned size){
 	return next;
 }
 
+static void cut(block *b,size_t size){
+	if(b->size - size >= MIN_CUT_BLOCK && b->size - size >= CUT_RATIO * size){
+		block *p = split(b,size);
+		insert_list(p);
+	}
+}
+
 /*
  * malloc
  */
 void *malloc (size_t bytes) {
-	printf("malloc\n");
+	// printf("malloc\n");
 	if(bytes == 0) return NULL;
-	size_t size = ALIGN(HEADER_BYTES + bytes) >> 3;
+	size_t size = calc_size(bytes);
 	block *b = NULL;
-	for(int i = 0; i <= 9; i ++){
+	for(int i = 0; i < BLOCK_NUM; i ++){
 		if(size > uBOUND(i)) continue;
 		block *p = head[i];
 		int c = 0;
@@ -183,17 +201,14 @@ void *malloc (size_t bytes) {
 		}
 		if(b) break;
 	}
-	printf("%u\n",size);
+	// printf("%u\n",size);
 	if(!b){
 		b = alloc_new_block(size);
-		printf("%p %p %p\n",b,last_block,BEGIN(b));
+		// printf("%p %p %p\n",b,last_block,BEGIN(b));
 		return BEGIN(b);
 	}
 	delete_list(b);
-	if(b->size - size >= MIN_BLOCK){
-		block *p = split(b,size);
-		insert_list(p);
-	}
+	cut(b,size);
 	set_alloc(b);
     return BEGIN(b);
 }
@@ -205,7 +220,7 @@ void free (void *p) {
     if(!p) return;
 	block *b = HEAD(p);
 	set_unalloc(b);
-	printf("free %p %p\n",b,last_block);
+	// printf("free %p %p\n",b,last_block);
 	if(b != last_block && !NEXT(b)->state){
 		// printf("NMSL1\n");
 		block *next = NEXT(b);
@@ -225,9 +240,9 @@ void free (void *p) {
  * realloc - you may want to look at mm-naive.c
  */
 void *realloc(void *oldptr, size_t bytes) {
-	int size = ALIGN(HEADER_BYTES + bytes) >> 3;
+	int size = calc_size(bytes);
 
-	printf("realloc %p %lu\n",oldptr,bytes);
+	// printf("realloc %p %lu\n",oldptr,bytes);
 
 	if(oldptr == NULL) return malloc(bytes);
 	if(bytes == 0){
@@ -238,20 +253,14 @@ void *realloc(void *oldptr, size_t bytes) {
 	block *b = HEAD(oldptr);
 	if(size == b->size) return oldptr;
 	if(size < b->size){
-		if(b->size - size >= MIN_BLOCK){
-			block *new_block = split(b,size);
-			insert_list(new_block);
-		}
+		cut(b,size);
 		return oldptr;
 	}else{
-		printf("HHH\n");
+		// printf("HHH\n");
 		if(b != last_block && !NEXT(b)->state && b->size + NEXT(b)->size >= size){
 			delete_list(NEXT(b));
 			merge(b);
-			if(b->size - size >= MIN_BLOCK){
-				block *p = split(b,size);
-				insert_list(p);
-			}
+			cut(b,size);
 			return oldptr;
 		}else if(b == last_block){
 			mem_sbrk(BYTE(size - b->size));
@@ -259,7 +268,7 @@ void *realloc(void *oldptr, size_t bytes) {
 			return oldptr;
 		}else{
 			void *newptr = malloc(bytes);
-			memcpy(newptr,oldptr,min(SIZE_IN_BYTE(b) - HEADER_BYTES,bytes));
+			memcpy(newptr,oldptr,min(SIZE_IN_BYTE(b) - ALLOC_HEADER_BYTES,bytes));
 			free(oldptr);
 			return newptr;
 		}
@@ -283,7 +292,7 @@ void *calloc (size_t nmemb, size_t bytes) {
  * May be useful for debugging.
  */
 static int in_heap(const void *p) {
-    return p <= mem_heap_hi() && p >= mem_heap_lo();
+    return p <= mem_heap_hi() && p >= HEAP_LOW;
 }
 
 /*
