@@ -37,7 +37,7 @@
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(p) (((size_t)(p) + (ALIGNMENT-1)) & ~0x7)
 
-#define MAX_FIT_TIMES 5
+#define MAX_FIT_TIMES 10
 
 #define BLOCK_NUM 10
 
@@ -46,7 +46,7 @@
 #define ALLOC_HEADER_BYTES 4
 #define UNALLOC_HEADER_BYTES 12
 
-#define MIN_CUT_BLOCK 5
+#define MIN_CUT_BLOCK 2 // must not generate block of 1 word
 
 
 #define BYTE(size) ((size) << 3)
@@ -76,9 +76,9 @@ typedef struct __block{
 	unsigned next;
 }block;
 
-block **head,*first_block,*last_block;
+static block **head,*first_block,*last_block;
 
-void *HEAP_LOW;
+static void *HEAP_LOW;
 
 
 inline static unsigned calc_size(size_t bytes){
@@ -174,8 +174,14 @@ static block* split(block *b,unsigned size){
 }
 
 static void cut(block *b,size_t size){
-	if(b->size - size >= MIN_CUT_BLOCK && b->size - size >= CUT_RATIO * size){
+	if(b->size - size >= MIN_CUT_BLOCK && (b->size <= 50 || b->size - size >= CUT_RATIO * size)){
 		block *p = split(b,size);
+		if(p != last_block && !NEXT(p)->state){
+			// printf("NMSL1\n");
+			block *next = NEXT(p);
+			delete_list(next);
+			p = merge(p);
+		}
 		insert_list(p);
 	}
 }
@@ -196,7 +202,7 @@ void *malloc (size_t bytes) {
 			p = LINK_NEXT(p);
 			if(p->size < size) continue;
 			if(!b || p->size <= b->size) b = p;
-			c ++;
+			if(b) c ++;
 			if(b && c >= MAX_FIT_TIMES) break;
 		}
 		if(b) break;
