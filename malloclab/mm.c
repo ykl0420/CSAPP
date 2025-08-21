@@ -37,16 +37,18 @@
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(p) (((size_t)(p) + (ALIGNMENT-1)) & ~0x7)
 
-#define MAX_FIT_TIMES 10
-
-#define BLOCK_NUM 10
-
-#define CUT_RATIO 0.2
-
 #define ALLOC_HEADER_BYTES 4
 #define UNALLOC_HEADER_BYTES 12
 
-#define MIN_CUT_BLOCK 2 // must not generate block of 1 word
+#define CHUNK_SIZE 512
+
+#define MAX_FIT_TIMES 10
+
+#define LIST_NUM 10
+
+#define CUT_RATIO 0.2
+
+#define MIN_BLOCK 2 // must not generate block of 1 word, unallocated block need 2 words
 
 
 #define BYTE(size) ((size) << 3)
@@ -54,12 +56,12 @@
 
 
 #define lBOUND(k) ((1u << (k)))
-#define uBOUND(k) ((k) == BLOCK_NUM - 1 ? UINT_MAX : lBOUND((k) + 1) - 1)
+#define uBOUND(k) ((k) == LIST_NUM - 1 ? UINT_MAX : lBOUND((k) + 1) - 1)
 
 
-#define LINK_POS(b) ((void*)b - HEAP_LOW)
-#define LINK_PREV(b) ((block*)(HEAP_LOW + (b)->prev))
-#define LINK_NEXT(b) ((block*)(HEAP_LOW + (b)->next))
+#define LIST_POS(b) ((void*)b - HEAP_LOW)
+#define LIST_PREV(b) ((block*)(HEAP_LOW + (b)->prev))
+#define LIST_NEXT(b) ((block*)(HEAP_LOW + (b)->next))
 
 #define NEXT(p) ((block*)((void*)(p) + SIZE_IN_BYTE(p)))
 #define PREV(p) ((block*)((void*)(p) - *((int*)(p) - 1)))
@@ -81,21 +83,22 @@ static block **head,*first_block,*last_block;
 static void *HEAP_LOW;
 
 
-inline static unsigned calc_size(size_t bytes){
-	size_t size = ALIGN(ALLOC_HEADER_BYTES + bytes) >> 3;
-	return size + (size == 1);
-}
 inline static unsigned min(unsigned a,unsigned b){
 	return a < b ? a : b;
 }
+inline static unsigned align_size(size_t bytes){
+	size_t size = ALIGN(ALLOC_HEADER_BYTES + bytes) >> 3;
+	return size + (size == 1); // max(size,MIN_BLOCK)
+}
+static void cut(block *b,size_t size);
 
 /*
  * Initialize: return -1 on error, 0 on success.
  */
 int mm_init(void) {
-	head = mem_sbrk(BLOCK_NUM * sizeof(block*));
+	head = mem_sbrk(LIST_NUM * sizeof(block*));
 	if(head == NULL) return -1;
-	for(int i = 0; i < BLOCK_NUM; i ++){
+	for(int i = 0; i < LIST_NUM; i ++){
 		head[i] = mem_sbrk(ALIGN(UNALLOC_HEADER_BYTES));
 		head[i]->size = 0;
 		head[i]->state = 0;
@@ -110,11 +113,14 @@ int mm_init(void) {
 }
 
 static block* alloc_new_block(unsigned size){
-	block *b = mem_sbrk(BYTE(size));
-	b->size = size;
+	unsigned t = size;
+	if(mem_heapsize() >= (1u << 18) && t < CHUNK_SIZE) t = CHUNK_SIZE;
+	block *b = mem_sbrk(BYTE(t));
+	b->size = t;
 	b->state = 1;
 	if(b != first_block) b->prev_state = last_block->state;
 	last_block = b;
+	cut(b,size);
 	return b;
 }
 
@@ -133,18 +139,18 @@ inline static void set_unalloc(block* b){
 }
 
 static void insert_list(block *b){
-	for(int i = 0; i < BLOCK_NUM; i ++){
+	for(int i = 0; i < LIST_NUM; i ++){
 		if(b->size > uBOUND(i)) continue;
 		b->next = head[i]->next;
-		if(b->next) LINK_NEXT(b)->prev = LINK_POS(b);
-		b->prev = LINK_POS(head[i]);
-		head[i]->next = LINK_POS(b);
+		if(b->next) LIST_NEXT(b)->prev = LIST_POS(b);
+		b->prev = LIST_POS(head[i]);
+		head[i]->next = LIST_POS(b);
 		break;
 	}
 }
 inline static void delete_list(block *b){
-	LINK_PREV(b)->next = b->next;
-	if(b->next) LINK_NEXT(b)->prev = b->prev;
+	LIST_PREV(b)->next = b->next;
+	if(b->next) LIST_NEXT(b)->prev = b->prev;
 }
 
 /* Merge the block b and NEXT(b), keep the state of b */
@@ -174,7 +180,7 @@ static block* split(block *b,unsigned size){
 }
 
 static void cut(block *b,size_t size){
-	if(b->size - size >= MIN_CUT_BLOCK && (b->size <= 50 || b->size - size >= CUT_RATIO * size)){
+	if(b->size - size >= MIN_BLOCK && (b->size <= 50 || b->size - size >= CUT_RATIO * size)){
 		block *p = split(b,size);
 		if(p != last_block && !NEXT(p)->state){
 			// printf("NMSL1\n");
@@ -192,14 +198,15 @@ static void cut(block *b,size_t size){
 void *malloc (size_t bytes) {
 	// printf("malloc\n");
 	if(bytes == 0) return NULL;
-	size_t size = calc_size(bytes);
+	// if(bytes >= 448 && bytes < 512) bytes = 512;
+	size_t size = align_size(bytes);
 	block *b = NULL;
-	for(int i = 0; i < BLOCK_NUM; i ++){
+	for(int i = 0; i < LIST_NUM; i ++){
 		if(size > uBOUND(i)) continue;
 		block *p = head[i];
 		int c = 0;
 		while(p->next){
-			p = LINK_NEXT(p);
+			p = LIST_NEXT(p);
 			if(p->size < size) continue;
 			if(!b || p->size <= b->size) b = p;
 			if(b) c ++;
@@ -246,7 +253,7 @@ void free (void *p) {
  * realloc - you may want to look at mm-naive.c
  */
 void *realloc(void *oldptr, size_t bytes) {
-	int size = calc_size(bytes);
+	int size = align_size(bytes);
 
 	// printf("realloc %p %lu\n",oldptr,bytes);
 

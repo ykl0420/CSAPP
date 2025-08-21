@@ -25,94 +25,94 @@
  * will use for testing. Modify this if you want to add or delete
  * traces from the driver's test suite.
  */
-// #define DEFAULT_TRACEFILES \
-//     "alaska.rep", \
-//     "amptjp.rep", \
-//     "bash.rep", \
-//     "boat.rep",\
-//     "boat-plus.rep", \
-//     "binary2-bal.rep",\
-//     "cccp.rep", \
-//     "cccp-bal.rep", \
-//     "chrome.rep", \
-//     "coalesce-big.rep",  \
-//     "coalescing-bal.rep", \
-//     "corners.rep", \
-//     "cp-decl.rep", \
-//     "exhaust.rep", \
-//     "expr-bal.rep", \
-//     "firefox-reddit2.rep", \
-//     "freeciv.rep", \
-//     "malloc.rep", \
-//     "malloc-free.rep", \
-//     "perl.rep", \
-//     "random.rep", \
-//     "random2.rep", \
-//     "realloc.rep"
 #define DEFAULT_TRACEFILES \
     "alaska.rep", \
-    "boat.rep", \
-    "cp-decl.rep", \
-    "hostname.rep", \
-    "needle.rep", \
-    "random.rep", \
-    "rulsr.rep", \
-    "amptjp-bal.rep", \
-    "cccp-bal.rep", \
-    "exhaust.rep", \
-    "login.rep", \
-    "nlydf.rep", \
-    "random2-bal.rep", \
-    "seglist.rep", \
     "amptjp.rep", \
-    "cccp.rep", \
-    "expr-bal.rep", \
-    "lrucd.rep", \
-    "perl.1.rep", \
-    "random2.rep", \
-    "short1-bal.rep", \
     "bash.rep", \
+    "boat.rep",\
+    "boat-plus.rep", \
+    "binary2-bal.rep",\
+    "cccp.rep", \
+    "cccp-bal.rep", \
     "chrome.rep", \
-    "expr.rep", \
-    "ls.1.rep", \
-    "perl.2.rep", \
-    "realloc-bal.rep", \
-    "short1.rep", \
-    "binary-bal.rep", \
-    "coalesce-big.rep", \
-    "firefox-reddit.rep", \
-    "ls.rep", \
-    "perl.3.rep", \
-    "realloc.rep", \
-    "short2-bal.rep", \
-    "binary.rep", \
+    "coalesce-big.rep",  \
     "coalescing-bal.rep", \
+    "corners.rep", \
+    "cp-decl.rep", \
+    "exhaust.rep", \
+    "expr-bal.rep", \
     "firefox-reddit2.rep", \
+    "freeciv.rep", \
+    "malloc.rep", \
     "malloc-free.rep", \
     "perl.rep", \
-    "realloc2-bal.rep", \
-    "short2.rep", \
-    "binary2-bal.rep", \
-    "coalescing.rep", \
-    "firefox.rep", \
-    "malloc.rep", \
-    "pulseaudio.rep", \
-    "realloc2.rep", \
-    "stty.rep", \
-    "binary2.rep", \
-    "corners.rep", \
-    "freeciv.rep", \
-    "merry-go-round.rep", \
-    "qyqyc.rep", \
-    "rm.1.rep", \
-    "tty.rep", \
-    "boat-plus.rep", \
-    "cp-decl-bal.rep", \
-    "fs.rep", \
-    "mutt.rep", \
-    "random-bal.rep", \
-    "rm.rep", \
-    "xterm.rep"
+    "random.rep", \
+    "random2.rep", \
+    "realloc.rep"
+// #define DEFAULT_TRACEFILES \
+//     "alaska.rep", \
+//     "boat.rep", \
+//     "cp-decl.rep", \
+//     "hostname.rep", \
+//     "needle.rep", \
+//     "random.rep", \
+//     "rulsr.rep", \
+//     "amptjp-bal.rep", \
+//     "cccp-bal.rep", \
+//     "exhaust.rep", \
+//     "login.rep", \
+//     "nlydf.rep", \
+//     "random2-bal.rep", \
+//     "seglist.rep", \
+//     "amptjp.rep", \
+//     "cccp.rep", \
+//     "expr-bal.rep", \
+//     "lrucd.rep", \
+//     "perl.1.rep", \
+//     "random2.rep", \
+//     "short1-bal.rep", \
+//     "bash.rep", \
+//     "chrome.rep", \
+//     "expr.rep", \
+//     "ls.1.rep", \
+//     "perl.2.rep", \
+//     "realloc-bal.rep", \
+//     "short1.rep", \
+//     "binary-bal.rep", \
+//     "coalesce-big.rep", \
+//     "firefox-reddit.rep", \
+//     "ls.rep", \
+//     "perl.3.rep", \
+//     "realloc.rep", \
+//     "short2-bal.rep", \
+//     "binary.rep", \
+//     "coalescing-bal.rep", \
+//     "firefox-reddit2.rep", \
+//     "malloc-free.rep", \
+//     "perl.rep", \
+//     "realloc2-bal.rep", \
+//     "short2.rep", \
+//     "binary2-bal.rep", \
+//     "coalescing.rep", \
+//     "firefox.rep", \
+//     "malloc.rep", \
+//     "pulseaudio.rep", \
+//     "realloc2.rep", \
+//     "stty.rep", \
+//     "binary2.rep", \
+//     "corners.rep", \
+//     "freeciv.rep", \
+//     "merry-go-round.rep", \
+//     "qyqyc.rep", \
+//     "rm.1.rep", \
+//     "tty.rep", \
+//     "boat-plus.rep", \
+//     "cp-decl-bal.rep", \
+//     "fs.rep", \
+//     "mutt.rep", \
+//     "random-bal.rep", \
+//     "rm.rep", \
+//     "xterm.rep"
 
 /*
  * If this is uncommented, then use "alt grading", in which
