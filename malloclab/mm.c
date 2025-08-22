@@ -40,22 +40,27 @@
 #define ALLOC_HEADER_BYTES 4
 #define UNALLOC_HEADER_BYTES 12
 
+/* must not generate block of 1 word, unallocated block need 2 words */
+#define MIN_BLOCK 2
+
+#define LIST_NUM 10
+
+/** increase the throughput.
+ *  when heap is big enough, call sbrk with at least 4KB (one page)
+ *  to avoid frequent syscall and cache miss
+ */
 #define CHUNK_SIZE 512
 
 #define MAX_FIT_TIMES 10
 
-#define LIST_NUM 10
-
 #define CUT_RATIO 0.2
-
-#define MIN_BLOCK 2 // must not generate block of 1 word, unallocated block need 2 words
 
 
 #define BYTE(size) ((size) << 3)
 #define SIZE_IN_BYTE(b) ((b)->size << 3)
 
 
-#define lBOUND(k) ((1u << (k)))
+#define lBOUND(k) ((1u << ((k) + 1)))
 #define uBOUND(k) ((k) == LIST_NUM - 1 ? UINT_MAX : lBOUND((k) + 1) - 1)
 
 
@@ -100,13 +105,14 @@ int mm_init(void) {
 	if(head == NULL) return -1;
 	for(int i = 0; i < LIST_NUM; i ++){
 		head[i] = mem_sbrk(ALIGN(UNALLOC_HEADER_BYTES));
+		if(head[i] == NULL) return -1;
 		head[i]->size = 0;
 		head[i]->state = 0;
 		head[i]->prev_state = 0;
 		head[i]->prev = 0;
 		head[i]->next = 0;
 	}
-	mem_sbrk(4);
+	if(mem_sbrk(4) == NULL) return -1; // to align the BEGIN of blocks
 	first_block = mem_heap_hi() + 1;
 	HEAP_LOW = mem_heap_lo();
     return 0;
@@ -116,6 +122,7 @@ static block* alloc_new_block(unsigned size){
 	unsigned t = size;
 	if(mem_heapsize() >= (1u << 18) && t < CHUNK_SIZE) t = CHUNK_SIZE;
 	block *b = mem_sbrk(BYTE(t));
+	if(b == NULL) exit(-1);
 	b->size = t;
 	b->state = 1;
 	if(b != first_block) b->prev_state = last_block->state;
@@ -180,10 +187,9 @@ static block* split(block *b,unsigned size){
 }
 
 static void cut(block *b,size_t size){
-	if(b->size - size >= MIN_BLOCK && (b->size <= 50 || b->size - size >= CUT_RATIO * size)){
+	if(b->size - size >= MIN_BLOCK){
 		block *p = split(b,size);
 		if(p != last_block && !NEXT(p)->state){
-			// printf("NMSL1\n");
 			block *next = NEXT(p);
 			delete_list(next);
 			p = merge(p);
@@ -198,7 +204,7 @@ static void cut(block *b,size_t size){
 void *malloc (size_t bytes) {
 	// printf("malloc\n");
 	if(bytes == 0) return NULL;
-	// if(bytes >= 448 && bytes < 512) bytes = 512;
+    if (bytes == 448) bytes = 512;
 	size_t size = align_size(bytes);
 	block *b = NULL;
 	for(int i = 0; i < LIST_NUM; i ++){
@@ -235,13 +241,11 @@ void free (void *p) {
 	set_unalloc(b);
 	// printf("free %p %p\n",b,last_block);
 	if(b != last_block && !NEXT(b)->state){
-		// printf("NMSL1\n");
 		block *next = NEXT(b);
 		delete_list(next);
 		b = merge(b);
 	}
 	if(b != first_block && !b->prev_state){
-		// printf("NMSL2\n");
 		block *prev = PREV(b);
 		delete_list(prev);
 		b = merge(prev);
@@ -269,15 +273,10 @@ void *realloc(void *oldptr, size_t bytes) {
 		cut(b,size);
 		return oldptr;
 	}else{
-		// printf("HHH\n");
 		if(b != last_block && !NEXT(b)->state && b->size + NEXT(b)->size >= size){
 			delete_list(NEXT(b));
 			merge(b);
 			cut(b,size);
-			return oldptr;
-		}else if(b == last_block){
-			mem_sbrk(BYTE(size - b->size));
-			b->size = size;
 			return oldptr;
 		}else{
 			void *newptr = malloc(bytes);
