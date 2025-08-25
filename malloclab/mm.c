@@ -1,8 +1,8 @@
 /*
  * mm.c
  *
- * 88% utilization + ~15000 Kops throughput
- * 55 + 40 = 95 points
+ * 89% utilization + ~15000 Kops throughput
+ * 58 + 40 = 98 points
  * uncomment the third line of malloc() to get 100
  *
  *
@@ -69,7 +69,7 @@
 
 /* If you want debugging output, use the following macro.  When you hand
  * in, remove the #define DEBUG line. */
-#define DEBUG
+// #define DEBUG
 #ifdef DEBUG
 #else
 # define printf(...)
