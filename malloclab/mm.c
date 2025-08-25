@@ -46,7 +46,7 @@
  * 		free block :
  * 			HEADER (12B) : size + state + prev_state (4B in total) + prev (4B) + next (4B)
  * 			PADDING (size - 12B - 4B) : nothing
- * 			FOOTER (4B) : size (4B)
+ * 			FOOTER (4B) : size in bytes (4B)
  *
  * for allocated block, payload begin at prev
  *
@@ -69,7 +69,7 @@
 
 /* If you want debugging output, use the following macro.  When you hand
  * in, remove the #define DEBUG line. */
-// #define DEBUG
+#define DEBUG
 #ifdef DEBUG
 #else
 # define printf(...)
@@ -117,15 +117,15 @@
 #define uBOUND(k) ((k) == LIST_NUM - 1 ? UINT_MAX : lBOUND((k) + 1) - 1)
 
 
-#define LIST_POS(b) ((void*)b - HEAP_LOW)
+#define LIST_POS(b) ((void*)(b) - HEAP_LOW)
 #define LIST_PREV(b) ((block*)(HEAP_LOW + (b)->prev))
 #define LIST_NEXT(b) ((block*)(HEAP_LOW + (b)->next))
 
 #define NEXT(p) ((block*)((void*)(p) + SIZE_IN_BYTE(p)))
-#define PREV(p) ((block*)((void*)(p) - *((int*)(p) - 1)))
+#define PREV(p) ((block*)((void*)(p) - *((unsigned*)(p) - 1)))
 
 #define BEGIN(p) ((void*)(p) + ALLOCED_HEADER_BYTES)
-#define END(p) ((void*)((int*)(NEXT(p)) - 1))
+#define END(p) ((void*)((unsigned*)(NEXT(p)) - 1))
 #define HEAD(p) ((block*)((void*)(p) - ALLOCED_HEADER_BYTES))
 
 typedef struct __block{
@@ -141,14 +141,23 @@ static block **head,*first_block,*last_block;
 static void *HEAP_LOW;
 
 
+
+static void update_state(block* b,unsigned state);
+
+static void cut(block *b,size_t size);
+
+static void delete_list(block *b);
+
+
+
 inline static unsigned min(unsigned a,unsigned b){
 	return a < b ? a : b;
 }
-inline static unsigned align_size(size_t bytes){
+
+inline static unsigned align_to_size(size_t bytes){
 	size_t size = ALIGN(ALLOCED_HEADER_BYTES + bytes) >> 3;
 	return size + (size == 1); // max(size,MIN_BLOCK)
 }
-static void cut(block *b,size_t size);
 
 /*
  * Initialize: return -1 on error, 0 on success.
@@ -167,35 +176,48 @@ int mm_init(void) {
 	}
 	if(mem_sbrk(4) == NULL) return -1; // to align the BEGIN of blocks
 	first_block = mem_heap_hi() + 1;
+	last_block = NULL;
 	HEAP_LOW = mem_heap_lo();
     return 0;
 }
 
+
+/** extend the heap to get a new block of size SIZE,
+ *  if the last_block is free block, merge it with the newly request block
+ *  */
 static block* alloc_new_block(unsigned size){
+	if(last_block && last_block->state == 0) size -= last_block->size;
+	// printf("%u\n",size);
 	unsigned t = size;
 	if(mem_heapsize() >= (1u << 18) && t < CHUNK_SIZE) t = CHUNK_SIZE;
 	block *b = mem_sbrk(BYTE(t));
 	if(b == NULL) exit(-1);
 	b->size = t;
 	b->state = 1;
-	if(b != first_block) b->prev_state = last_block->state;
+	if(last_block) b->prev_state = last_block->state;
 	last_block = b;
 	cut(b,size);
+	if(b != first_block && b->prev_state == 0){
+		block* prev = PREV(b);
+		prev->size += b->size;
+		if(last_block == b) last_block = prev;
+		b = prev;
+		delete_list(b);
+		update_state(b,1);
+	}
 	return b;
 }
 
 inline static void set_footer(block *b){
-	*(int*)END(b) = SIZE_IN_BYTE(b);
+	*(unsigned*)END(b) = SIZE_IN_BYTE(b);
 }
 
-inline static void set_alloc(block *b){
-	b->state = 1;
-	if(b != last_block) NEXT(b)->prev_state = 1;
-}
-inline static void set_unalloc(block* b){
-	b->state = 0;
-	set_footer(b);
-	if(b != last_block) NEXT(b)->prev_state = 0;
+/* update the state and footer of b and the prev_next of NEXT(b), if STATE = 2 then only update the footer and prev_next */
+inline static void update_state(block* b,unsigned state){
+	if(state == 2) state = b->state;
+	b->state = state;
+	if(!state) set_footer(b);
+	if(b != last_block) NEXT(b)->prev_state = state;
 }
 
 static void insert_list(block *b){
@@ -218,8 +240,7 @@ static block* merge(block *b){
 	block *next = NEXT(b);
 	b->size += next->size;
 	if(next == last_block) last_block = b;
-	if(!b->state) set_footer(b);
-	if(b != last_block) NEXT(b)->prev_state = b->state;
+	update_state(b,2);
 	return b;
 }
 /* split block b into two continuous blocks b and NEXT(b),
@@ -228,14 +249,13 @@ static block* merge(block *b){
  * return the pointer of second block
  */
 static block* split(block *b,unsigned size){
-	int new_size = b->size - size;
+	unsigned new_size = b->size - size;
 	b->size = size;
 	block *next = NEXT(b);
 	next->size = new_size;
-	next->state = 0;
-	next->prev_state = b->state;
-	set_footer(next);
 	if(last_block == b) last_block = next;
+	update_state(b,2);
+	update_state(next,0);
 	return next;
 }
 
@@ -260,7 +280,7 @@ static block* merge_prev(block* b){
 	return b;
 }
 
-/* split(b,size) and merge the free block, insert the free block to list */
+/* split(b,size) and insert the free block to list */
 static void cut(block *b,size_t size){
 	if(b->size - size >= MIN_BLOCK){
 		block *p = split(b,size);
@@ -273,10 +293,10 @@ static void cut(block *b,size_t size){
  * malloc
  */
 void *malloc (size_t bytes) {
-	// printf("malloc\n");
+	// printf("malloc %lu\n",bytes);
 	if(bytes == 0) return NULL;
     // if (bytes == 448) bytes = 512; // get this by observing the data, uncomment to get 100
-	size_t size = align_size(bytes);
+	unsigned size = align_to_size(bytes);
 	block *b = NULL;
 	for(int i = 0; i < LIST_NUM; i ++){
 		if(size > uBOUND(i)) continue;
@@ -299,7 +319,7 @@ void *malloc (size_t bytes) {
 	}
 	delete_list(b);
 	cut(b,size);
-	set_alloc(b);
+	update_state(b,1);
     return BEGIN(b);
 }
 
@@ -307,9 +327,10 @@ void *malloc (size_t bytes) {
  * free
  */
 void free (void *p) {
+	// printf("free %p\n",p);
     if(!p) return;
 	block *b = HEAD(p);
-	set_unalloc(b);
+	update_state(b,0);
 	// printf("free %p %p\n",b,last_block);
 	b = merge_next(b);
 	b = merge_prev(b);
@@ -320,10 +341,10 @@ void free (void *p) {
  * realloc - you may want to look at mm-naive.c
  */
 void *realloc(void *oldptr, size_t bytes) {
-	int size = align_size(bytes);
 
-	// printf("realloc %p %lu\n",oldptr,bytes);
+	// printf("realloc %p %u\n",oldptr,bytes);
 
+	unsigned size = align_to_size(bytes);
 	if(oldptr == NULL) return malloc(bytes);
 	if(bytes == 0){
 		free(oldptr);
@@ -336,7 +357,7 @@ void *realloc(void *oldptr, size_t bytes) {
 		cut(b,size);
 		return oldptr;
 	}else{
-		if(b != last_block && !NEXT(b)->state && b->size + NEXT(b)->size >= size){
+		if(b != last_block && !NEXT(b)->state && (unsigned)b->size + (unsigned)NEXT(b)->size >= size){
 			delete_list(NEXT(b));
 			merge(b);
 			cut(b,size);
